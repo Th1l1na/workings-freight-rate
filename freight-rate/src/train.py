@@ -12,7 +12,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from .features import build_features, clean, daily_market_index
+from .features import build_features, clean, daily_market_index, weight_fill_values
 from .model import (GBMOnlyModel, TwoStageRateModel, apply_outlier_detector, fit_outlier_detector,
                     flag_label_outliers)
 
@@ -178,12 +178,16 @@ def main() -> None:
     parser.add_argument("--data-dir", default="data")
     parser.add_argument("--out-dir", default="outputs")
     parser.add_argument("--skip-cv", action="store_true")
+    parser.add_argument("--predictions-path", default="validation_predictions.csv",
+                        help="where to write load_id,predicted_rate (the assessment expects the repo root)")
+    parser.add_argument("--december-path", default="december_predictions.csv",
+                        help="where to write the filled December chart file")
     args = parser.parse_args()
     data_dir, out_dir = Path(args.data_dir), Path(args.out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
 
     train, valid, daily_mi = load(data_dir)
-    weight_fill = train.groupby("equipment")["weight"].median().to_dict()
+    weight_fill = weight_fill_values(train)
     feats = build_features(train, weight_fill)
     log_y = np.log(train["posted_rate"])
     train["label_outlier"] = flag_label_outliers(feats, log_y).values
@@ -222,16 +226,15 @@ def main() -> None:
     valid_pred = pd.Series(model.predict(vfeats), index=valid["load_id"])
     template["predicted_rate"] = template["load_id"].map(valid_pred).round(2)
     assert template["predicted_rate"].notna().all() and len(template) == 12_000
-    template.to_csv("validation_predictions.csv", index=False)
-    print("Wrote validation_predictions.csv")
+    template.to_csv(args.predictions_path, index=False)
+    print(f"Wrote {args.predictions_path}")
 
     # December chart: fill the fixed-lane rows. The chart file only carries
     # lane, equipment, weight and date, so the remaining model inputs are
     # reconstructed: coordinates from the city lookup, market_index from the
     # observed daily market median, quote_signal from the daily median.
-    dec_path = data_dir / "december_chart_inputs.csv"
+    dec_path = data_dir / "december_chart_inputs.csv"  # provided input: read, never required to be writable
     dec = pd.read_csv(dec_path)
-    dec_out = Path("december_chart_inputs.csv")
     dec_cols = list(dec.columns)
     both = pd.concat([train, valid], ignore_index=True)
     coords = {}
@@ -249,8 +252,16 @@ def main() -> None:
     dx["quote_signal"] = dx["date"].map(daily_qs)
     dx = clean(dx, daily_mi)
     dec["predicted_rate"] = np.round(model.predict(build_features(dx, weight_fill)), 2)
-    dec[dec_cols].to_csv(dec_out, index=False)
-    print(f"Wrote {dec_out}")
+    dec[dec_cols].to_csv(args.december_path, index=False)
+    print(f"Wrote {args.december_path}")
+    # The assessment README asks for the predicted_rate column of the provided
+    # file to be filled. Do that too, but never fail the run if it is read-only.
+    try:
+        dec[dec_cols].to_csv(dec_path, index=False)
+        print(f"Filled {dec_path} (as the assessment README asks)")
+    except PermissionError:
+        print(f"NOTE: {dec_path} is read-only, so it was left unchanged. Score with: "
+              f"python score.py --predictions {args.predictions_path} --december-predictions {args.december_path}")
 
     summary["validation_pred_stats"] = template["predicted_rate"].describe().round(2).to_dict()
     summary["december_pred_range"] = [float(dec["predicted_rate"].min()), float(dec["predicted_rate"].max())]
