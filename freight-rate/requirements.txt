@@ -1,0 +1,10 @@
+matplotlib>=3.8,<4
+numpy>=1.26,<3
+pandas>=2.0,<3
+scipy>=1.11,<2
+scikit-learn>=1.4,<2
+lightgbm>=4.0,<5
+xgboost>=2.0,<4
+python-docx>=1.1,<2
+# optional: only for make_figure_book.py PDF export (HTML is always written)
+playwright>=1.40
