@@ -12,7 +12,7 @@ import pandas as pd
 import matplotlib.pyplot as plt
 from matplotlib.colors import LogNorm
 
-from .features import build_features, clean, daily_market_index, haversine_miles
+from .features import build_features, clean, daily_market_index, haversine_miles, weight_fill_values
 from .model import LINEAR_FEATURES, fit_outlier_detector
 from .plotting import (ACCENT, BAD, EQUIP_COLORS, GOLD, GOOD, INK, MUTED, TRAIN_C, VALID_C,
                        FigureRegistry)
@@ -44,7 +44,7 @@ def main(out_dir="outputs/figures/eda"):
     reg = FigureRegistry(out_dir, "EDA")
     raw_tr, raw_va, tr, va, mi = load()
     tr["rpm"] = tr["posted_rate"] / tr["distance"]
-    feats = build_features(tr, tr.groupby("equipment")["weight"].median().to_dict())
+    feats = build_features(tr, weight_fill_values(tr))
     log_y = np.log(tr["posted_rate"])
     det = fit_outlier_detector(feats, log_y)
     ratio = np.exp(log_y - det.predict(feats[LINEAR_FEATURES]))
@@ -460,6 +460,22 @@ def main(out_dir="outputs/figures/eda"):
              "Nov 1 – Dec 31, the same 2-month horizon.",
              "Same folds, rows and metrics for every model compared; outlier detection is re-fitted inside each "
              "fold on training months only.")
+    dv = lane[lane.equipment == "Dry Van"]
+    reg.facts({
+        "n_unseen_cities": len(unseen), "unseen_cities": ", ".join(unseen),
+        "n_unseen_city_val_loads": n_unseen_loads, "pct_unseen_city_val_loads": n_unseen_loads / len(va) * 100,
+        "coord_offset_median_miles": float(np.median(offs)), "coord_offset_phoenix_miles": float(offs[0]),
+        "n_real_coord_cities": len(offs), "circuity_median": float(circ.median()),
+        "normal_label_band_pct": float((max(ratio[~out].max(), 1 / ratio[~out].min()) - 1) * 100),
+        "outlier_plateau_low": float(min(plateau)), "outlier_plateau_high": float(max(plateau)),
+        "neg_weight_median_lb": float((-raw_tr.weight[neg]).median()), "n_neg_weight_val": int((raw_va.weight < 0).sum()),
+        "n_missing_weight_val": int(raw_va.weight.isna().sum()), "n_missing_mi_val": int(raw_va.market_index.isna().sum()),
+        "missing_weight_pct_min": float(raw_tr.assign(m=raw_tr.weight.isna()).groupby(raw_tr.date.dt.month).m.mean().min() * 100),
+        "missing_weight_pct_max": float(raw_tr.assign(m=raw_tr.weight.isna()).groupby(raw_tr.date.dt.month).m.mean().max() * 100),
+        "within_day_mi_std": float(tr.groupby("date").market_index.std().mean()),
+        "weight_cap_share_pct": float((tr.weight == 47500).mean() * 100),
+        "lane_dryvan_n": len(dv), "lane_dryvan_min": float(dv.posted_rate.min()), "lane_dryvan_max": float(dv.posted_rate.max()),
+    })
     print("EDA done")
 
 
