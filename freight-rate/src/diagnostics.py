@@ -13,7 +13,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
-from .features import GBM_FEATURES, LINEAR_FEATURES, build_features
+from .features import GBM_FEATURES, LINEAR_FEATURES, build_features, weight_fill_values
 from .model import TwoStageRateModel, flag_label_outliers
 from .plotting import ACCENT, BAD, EQUIP_COLORS, GOLD, GOOD, INK, MUTED, TRAIN_C, VALID_C, FigureRegistry
 from .train import load
@@ -24,7 +24,7 @@ FINAL = "Two-stage ensemble (final)"
 def main(out_dir="outputs/figures/diagnostics", model_name=FINAL):
     reg = FigureRegistry(out_dir, "Diagnostics")
     train, valid, daily_mi = load(Path("data"))
-    wf = train.groupby("equipment")["weight"].median().to_dict()
+    wf = weight_fill_values(train)
     feats = build_features(train, wf)
     log_y = np.log(train["posted_rate"])
 
@@ -143,6 +143,9 @@ def main(out_dir="outputs/figures/diagnostics", model_name=FINAL):
     first = wk[wk.week_in_fold <= 1].groupby("fold")[["bias", "mape"]].mean()
     last = wk[wk.week_in_fold >= wk.week_in_fold.max() - 1].groupby("fold")[["bias", "mape"]].mean()
     drift = (last.bias - first.bias)
+    reg.facts({"within_2pct": within[2] * 100, "within_5pct": within[5] * 100,
+               "first2w_mape": float(first.mape.mean()), "last2w_mape": float(last.mape.mean()),
+               "short_haul_bias": float(dist_b.iloc[0]), "long_haul_bias": float(dist_b.iloc[-1])})
     reg.save(fig, "04_error_over_time", "Error over time",
              "Daily mean signed error and 7-day MAPE across the three evaluation windows (dashed lines = fold "
              "boundaries).",
