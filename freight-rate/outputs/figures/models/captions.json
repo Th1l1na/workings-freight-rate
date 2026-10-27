@@ -1,0 +1,50 @@
+[
+  {
+    "section": "Models",
+    "file": "01_direct_vs_hybrid.png",
+    "title": "Direct vs hybrid, for 7 algorithm families",
+    "shows": "Each algorithm trained (a) directly on log(rate) with all features including a time-trend feature, (b) on the residual of the Ridge base. Same folds, same rows, same metric. Bars clipped at 6% (k-NN and MLP direct are far worse).",
+    "finding": "The hybrid wins for every family, by 0.5\u20131.0 points for tree models. Reason: trees cannot extrapolate. Given a trend feature, a tree predicts the same value for every date after its last split, so direct tree models under-predict later months (negative bias in folds 1 and 3, next chart). The Ridge base carries the trend forward; the tree only learns patterns that repeat (geography, interactions). k-NN and MLP direct fail badly: unscaled time extrapolation and no built-in log-linear structure.",
+    "decision": "Use the hybrid structure for the final model."
+  },
+  {
+    "section": "Models",
+    "file": "02_bias_by_fold.png",
+    "title": "Why direct trees lose: bias",
+    "shows": "Mean signed % error per fold (+ = over-prediction) for three tree learners, direct (dashed) vs hybrid (solid).",
+    "finding": "Direct tree models (all five) are 1.1\u20132.9% too low in folds 1 and 3: they freeze the price level at the end of training. Hybrids stay within \u00b10.7% there. In fold 2 every model over-predicts by ~1.5% because the trend estimated from Jan\u2013Jun alone was too steep (see checks).",
+    "decision": ""
+  },
+  {
+    "section": "Models",
+    "file": "03_leaderboard.png",
+    "title": "Leaderboard of all 21 candidates",
+    "shows": "Mean clean-label MAPE over the 3 time folds (bars) and each fold separately (markers). Teal = chosen ensemble, gold = other ensembles. The stacked ensemble has scores for folds 2\u20133 only (its weights need an earlier fold), so its bar is not directly comparable. Not shown (MAPE > 6%): Neural net (MLP) \u2014 direct, k-Nearest Neighbours \u2014 direct.",
+    "finding": "Three tiers: (1) hybrids and their ensembles at 1.6\u20131.9%; (2) direct tree models at 2.2\u20132.7%; (3) linear/GLM at 2.8% and the $/mile baseline at 4.6%. Ridge and the Gamma GLM are indistinguishable, so the log-normal Ridge is not losing anything versus a GLM made for positive skewed targets.",
+    "decision": ""
+  },
+  {
+    "section": "Models",
+    "file": "04_ensemble_significance.png",
+    "title": "Is the ensemble's gain real?",
+    "shows": "Difference in MAPE between each candidate and the original Ridge + LightGBM, with 95% confidence intervals from a bootstrap over dates (2,000 resamples; whole days are resampled because loads on the same day share market conditions).",
+    "finding": "LightGBM + XGBoost + Extra Trees: -0.072 points over all folds (CI -0.090 to -0.055, better on 73% of dates) and -0.010 on fold 3 (CI -0.024 to +0.004: no loss). Single learners are within \u00b10.02 points of LightGBM (XGBoost, HistGradientBoosting) or clearly worse on the most recent fold (Random Forest / Extra Trees alone lose 0.13\u20130.15 points). Combining tree types that make different errors (boosting vs randomised bagging) is what helps.",
+    "decision": "Chosen model: Ridge base + equal-weight average of LightGBM, XGBoost and Extra Trees residual models. Rule applied: best mean across folds, provided it is not significantly worse on the most recent fold. Gain is modest ($2.0 MAE) at the cost of ~3\u00d7 training time."
+  },
+  {
+    "section": "Models",
+    "file": "05_stacking.png",
+    "title": "Simple averaging vs learned stacking",
+    "shows": "Left: non-negative stacking weights learned walk-forward (only earlier folds' predictions). Right: fold MAPE of each ensemble (stacking has no fold-1 score because no earlier fold exists).",
+    "finding": "Learned weights jump around between folds (e.g. MLP gets 38% from fold 1, 0% from folds 1\u20132) and the stacked ensemble is the worst ensemble. With only 2\u20133 folds the weights over-fit the specific market of the earlier months.",
+    "decision": "Use fixed equal weights: nothing to over-fit."
+  },
+  {
+    "section": "Models",
+    "file": "06_accuracy_vs_cost.png",
+    "title": "Accuracy vs training cost",
+    "shows": "Mean MAPE against fit time on a 2-core machine. (h) = hybrid, (d) = direct.",
+    "finding": "The chosen ensemble trains in ~7 s per fold; still trivial for daily retraining.",
+    "decision": ""
+  }
+]
