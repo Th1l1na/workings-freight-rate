@@ -32,6 +32,13 @@ class FigureRegistry:
         self.items = json.loads(self.meta_path.read_text()) if self.meta_path.exists() else []
         self.items = [i for i in self.items if i["section"] != section]
 
+    def facts(self, values: dict):
+        """Record numbers used in the report text (outputs/facts.json), so no number is typed by hand."""
+        path = Path("outputs/facts.json")
+        cur = json.loads(path.read_text()) if path.exists() else {}
+        cur.update({k: (round(v, 4) if isinstance(v, float) else v) for k, v in values.items()})
+        path.write_text(json.dumps(cur, indent=2, sort_keys=True))
+
     def save(self, fig, name: str, title: str, shows: str, finding: str, decision: str = ""):
         path = self.out / f"{name}.png"
         fig.savefig(path)
