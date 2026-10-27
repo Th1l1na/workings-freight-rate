@@ -52,8 +52,25 @@ def haversine_miles(lat1, lon1, lat2, lon2) -> np.ndarray:
     return 2 * EARTH_RADIUS_MI * np.arcsin(np.sqrt(a))
 
 
+# Imputation statistics are taken only from rows before the first CV evaluation
+# window, so no fold (and not the final model) ever sees a statistic computed
+# from its own evaluation period.
+IMPUTATION_CUTOFF = pd.Timestamp("2025-05-01")
+
+
+def weight_fill_values(train: pd.DataFrame) -> dict[str, float]:
+    """Median weight per equipment type from 1 Jan - 30 Apr training rows only."""
+    early = train[pd.to_datetime(train["date"]) < IMPUTATION_CUTOFF]
+    return early.groupby("equipment")["weight"].median().to_dict()
+
+
 def daily_market_index(*frames: pd.DataFrame) -> pd.Series:
     """Median market_index per calendar date across all supplied frames.
+
+    No leakage: each date's median uses only rows from that same date, and the
+    training and validation files share no dates, so adding validation rows
+    leaves every training-date value unchanged. Validation rows only define
+    the Nov-Dec values, which are input features supplied for those dates.
 
     market_index is a market-level signal that varies only slightly between
     loads on the same day (std ~0.025), so the daily median is a robust
