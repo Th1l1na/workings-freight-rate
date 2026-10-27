@@ -8,7 +8,7 @@ Every candidate is evaluated two ways:
             learns only the Ridge residual from features WITHOUT absolute time.
 Then ensembles are built from the hybrid models' out-of-fold predictions.
 
-Run from the repository root (takes ~10-15 min on 2 cores):
+Run from the repository root (~4 min on 2 cores):
     python -m src.compare
 """
 from __future__ import annotations
@@ -28,7 +28,7 @@ from sklearn.neural_network import MLPRegressor
 from sklearn.pipeline import make_pipeline
 from sklearn.preprocessing import StandardScaler
 
-from .features import GBM_FEATURES, LINEAR_FEATURES, build_features
+from .features import GBM_FEATURES, LINEAR_FEATURES, build_features, weight_fill_values
 from .model import GBM_PARAMS, GBM_ROUNDS, apply_outlier_detector, fit_outlier_detector
 from .train import FOLDS, RatePerMileBaseline, load, metrics
 
@@ -168,7 +168,7 @@ def add_ensembles(oof: pd.DataFrame) -> pd.DataFrame:
 def main(out_dir="outputs"):
     out = Path(out_dir)
     train, valid, daily_mi = load(Path("data"))
-    feats = build_features(train, train.groupby("equipment")["weight"].median().to_dict())
+    feats = build_features(train, weight_fill_values(train))
     log_y = np.log(train["posted_rate"])
     frames, time_rows = [], []
     for fold, train_label, eval_label, start, end in FOLDS:
@@ -250,6 +250,21 @@ def plots(out_dir="outputs/figures/models"):
     oof = pd.read_csv("outputs/model_comparison_oof.csv.gz", parse_dates=["date"])
     s = summ.set_index("model")
 
+    cl_ = byf[byf.subset == "clean labels"]
+    trees = ["LightGBM", "XGBoost", "HistGradientBoosting", "Random Forest", "Extra Trees"]
+    d13 = cl_[cl_.model.isin([f"{n} — direct" for n in trees]) & cl_.fold.isin([1, 3])]["Bias%"]
+    h13 = cl_[cl_.model.isin([f"{n} — hybrid (Ridge + {n})" for n in trees]) & cl_.fold.isin([1, 3])]["Bias%"]
+    gain = summ.set_index("model")
+    facts = {"direct_tree_bias_f13_min": float(d13.min()), "direct_tree_bias_f13_max": float(d13.max()),
+             "hybrid_tree_bias_f13_absmax": float(h13.abs().max()),
+             "direct_minus_hybrid_tree_mape_min": float(min(gain.loc[f"{n} — direct", "MAPE"] -
+                                                            gain.loc[f"{n} — hybrid (Ridge + {n})", "MAPE"] for n in trees)),
+             "direct_minus_hybrid_tree_mape_max": float(max(gain.loc[f"{n} — direct", "MAPE"] -
+                                                            gain.loc[f"{n} — hybrid (Ridge + {n})", "MAPE"] for n in trees)),
+             "ensemble_mae_gain": float(gain.loc["LightGBM — hybrid (Ridge + LightGBM)", "MAE"] -
+                                        gain.loc["Ensemble: LightGBM + XGBoost + Extra Trees (hybrids)", "MAE"])}
+    reg.facts(facts)
+
     # 01 direct vs hybrid --------------------------------------------------
     names = list(LEARNERS)
     direct = [s.loc[f"{n} — direct", "MAPE"] for n in names]
@@ -276,7 +291,8 @@ def plots(out_dir="outputs/figures/models"):
              "Each algorithm trained (a) directly on log(rate) with all features including a time-trend feature, "
              "(b) on the residual of the Ridge base. Same folds, same rows, same metric. Bars clipped at 6% "
              "(k-NN and MLP direct are far worse).",
-             "The hybrid wins for every family, by 0.5–1 point for tree models. Reason: trees cannot extrapolate. "
+             f"The hybrid wins for every family, by {facts['direct_minus_hybrid_tree_mape_min']:.1f}–"
+             f"{facts['direct_minus_hybrid_tree_mape_max']:.1f} points for tree models. Reason: trees cannot extrapolate. "
              "Given a trend feature, a tree predicts the same value for every date after its last split, so direct "
              "tree models under-predict later months (negative bias in folds 1 and 3, next chart). The Ridge base "
              "carries the trend forward; the tree only learns patterns that repeat (geography, interactions). "
@@ -299,8 +315,9 @@ def plots(out_dir="outputs/figures/models"):
     reg.save(fig, "02_bias_by_fold", "Why direct trees lose: bias",
              "Mean signed % error per fold (+ = over-prediction) for three tree learners, direct (dashed) vs "
              "hybrid (solid).",
-             "Direct models are 1.2–2.3% too low in folds 1 and 3: they freeze the price level at the end of "
-             "training. Hybrids stay within ±0.6% there. In fold 2 every model over-predicts by ~1.5% because the trend "
+             f"Direct tree models (all five) are {abs(facts['direct_tree_bias_f13_max']):.1f}–"
+             f"{abs(facts['direct_tree_bias_f13_min']):.1f}% too low in folds 1 and 3: they freeze the price level at "
+             f"the end of training. Hybrids stay within ±{facts['hybrid_tree_bias_f13_absmax']:.1f}% there. In fold 2 every model over-predicts by ~1.5% because the trend "
              "estimated from Jan–Jun alone was too steep (see checks).",
              "")
 
@@ -370,7 +387,7 @@ def plots(out_dir="outputs/figures/models"):
              "different errors (boosting vs randomised bagging) is what helps.",
              "Chosen model: Ridge base + equal-weight average of LightGBM, XGBoost and Extra Trees residual "
              "models. Rule applied: best mean across folds, provided it is not significantly worse on the most "
-             "recent fold. Gain is modest (~$2 MAE, 4% relative) at the cost of ~3× training time (~10 s).")
+             f"recent fold. Gain is modest (${facts['ensemble_mae_gain']:.1f} MAE) at the cost of ~3× training time.")
 
     # 05 stacking ----------------------------------------------------------
     w = pd.read_json("outputs/stacking_weights.json", typ="series")
