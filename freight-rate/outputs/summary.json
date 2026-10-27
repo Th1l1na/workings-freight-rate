@@ -1,0 +1,33 @@
+{
+  "train_rows": 48000,
+  "label_outliers": 677,
+  "negative_weights_fixed": 292,
+  "missing_weight": 300,
+  "missing_market_index_imputed": 374,
+  "final_train_rows": 47323,
+  "linear_coefficients": {
+    "log_distance": 0.87138,
+    "eq_reefer": 0.12105,
+    "eq_flatbed": 0.07965,
+    "log_weight": 0.08085,
+    "log_market_index": 0.15351,
+    "quote_signal": 0.00792,
+    "quarter_end_ramp": 0.03824,
+    "trend_years": 0.07323,
+    "intercept": 0.70772
+  },
+  "validation_pred_stats": {
+    "count": 12000.0,
+    "mean": 2392.11,
+    "std": 1384.43,
+    "min": 194.38,
+    "25%": 1285.81,
+    "50%": 2067.0,
+    "75%": 3394.43,
+    "max": 7000.64
+  },
+  "december_pred_range": [
+    825.11,
+    861.31
+  ]
+}

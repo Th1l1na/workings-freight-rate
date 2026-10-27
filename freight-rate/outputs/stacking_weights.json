@@ -1,0 +1,20 @@
+{
+  "2":{
+    "LightGBM \u2014 hybrid (Ridge + LightGBM)":0.141,
+    "XGBoost \u2014 hybrid (Ridge + XGBoost)":0.0,
+    "HistGradientBoosting \u2014 hybrid (Ridge + HistGradientBoosting)":0.062,
+    "Random Forest \u2014 hybrid (Ridge + Random Forest)":0.098,
+    "Extra Trees \u2014 hybrid (Ridge + Extra Trees)":0.21,
+    "k-Nearest Neighbours \u2014 hybrid (Ridge + k-Nearest Neighbours)":0.0,
+    "Neural net (MLP) \u2014 hybrid (Ridge + Neural net (MLP))":0.488
+  },
+  "3":{
+    "LightGBM \u2014 hybrid (Ridge + LightGBM)":0.285,
+    "XGBoost \u2014 hybrid (Ridge + XGBoost)":0.0,
+    "HistGradientBoosting \u2014 hybrid (Ridge + HistGradientBoosting)":0.0,
+    "Random Forest \u2014 hybrid (Ridge + Random Forest)":0.406,
+    "Extra Trees \u2014 hybrid (Ridge + Extra Trees)":0.308,
+    "k-Nearest Neighbours \u2014 hybrid (Ridge + k-Nearest Neighbours)":0.0,
+    "Neural net (MLP) \u2014 hybrid (Ridge + Neural net (MLP))":0.0
+  }
+}
