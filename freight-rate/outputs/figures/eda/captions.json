@@ -1,0 +1,162 @@
+[
+  {
+    "section": "EDA",
+    "file": "01_timeline.png",
+    "title": "Data coverage over time",
+    "shows": "Number of loads per day in each file.",
+    "finding": "Training covers 01 Jan \u2013 31 Oct 2025; validation covers 01 Nov \u2013 31 Dec 2025. No overlap; volumes are steady (~160/day train, ~200/day validation).",
+    "decision": "Validation must be time-based (train on the past, score the future). A random split would leak same-day market conditions into training."
+  },
+  {
+    "section": "EDA",
+    "file": "02_missing.png",
+    "title": "Missing values by column",
+    "shows": "Share of missing values per column in each file.",
+    "finding": "weight: 300 train / 165 validation missing; market_index: 374 / 249. Every other column is complete, including the target.",
+    "decision": "No rows dropped for missing features. market_index -> that day's median (it is a market-wide signal); weight -> left as NaN for LightGBM (native handling) plus a missing flag, and equipment median for the linear stage."
+  },
+  {
+    "section": "EDA",
+    "file": "03_target.png",
+    "title": "Target distribution",
+    "shows": "Histogram of posted_rate on the dollar scale and on the log scale.",
+    "finding": "Range $57 \u2013 $25,533, median $2,031. Strongly right-skewed with a long tail of extreme values.",
+    "decision": "Model log(rate): errors become relative (a $50 miss matters more on a $300 load than a $3,000 one), multiplicative effects (equipment premium, market index) become additive, and the tail has less leverage."
+  },
+  {
+    "section": "EDA",
+    "file": "04_rate_vs_distance.png",
+    "title": "Rate vs distance (log\u2013log)",
+    "shows": "Each point is one load (flagged anomalous labels removed), coloured by equipment.",
+    "finding": "A straight line on log\u2013log axes means a power law: rate \u221d distance^0.87. Distance alone explains 99% of the variance in log(rate).",
+    "decision": "log(distance) is the primary feature. A power below 1 means rate per mile falls with distance."
+  },
+  {
+    "section": "EDA",
+    "file": "05_rate_per_mile.png",
+    "title": "Rate per mile by distance and equipment",
+    "shows": "Median $/mile per distance band (line) with the 10th\u201390th percentile band (shaded).",
+    "finding": "Median $/mile: Dry Van 2.05, Flatbed 2.22, Reefer 2.31. The ordering holds at every distance, so equipment acts as a roughly constant % premium.",
+    "decision": "Equipment enters as a multiplicative premium (dummy variables on log scale)."
+  },
+  {
+    "section": "EDA",
+    "file": "06_equipment.png",
+    "title": "Equipment mix and price level",
+    "shows": "Left: share of each equipment type per file. Right: $/mile distribution (outlier labels removed).",
+    "finding": "Mix is ~57% Dry Van, 25% Reefer, 18% Flatbed in both files; no category appears only in validation.",
+    "decision": "No re-weighting needed for equipment."
+  },
+  {
+    "section": "EDA",
+    "file": "07_weight.png",
+    "title": "Weight: sign errors and a cap",
+    "shows": "Left: raw weight including negatives. Right: weight after taking the absolute value.",
+    "finding": "292 train and 145 validation weights are negative, with magnitudes (median 31,822 lb) matching normal loads \u21d2 sign errors, not a separate population. 2.5% of loads sit exactly at 47,500 lb (a cap).",
+    "decision": "Take abs(weight) and keep a 'was negative' flag. Keep the capped values (a legal-limit cap is plausible and the model sees it as 'heaviest')."
+  },
+  {
+    "section": "EDA",
+    "file": "08_weight_effect.png",
+    "title": "Effect of weight on price",
+    "shows": "Mean residual of a distance-only fit, by weight band (shown as % difference).",
+    "finding": "Smooth, monotonic, roughly logarithmic relationship. Weight is a real but modest driver.",
+    "decision": "Use log(weight) in the linear stage and raw weight in the tree stage."
+  },
+  {
+    "section": "EDA",
+    "file": "09_shift.png",
+    "title": "Train vs validation: covariate shift",
+    "shows": "Density of each numeric feature in train_test.csv and validation.csv.",
+    "finding": "distance, weight and quote_signal match closely. market_index is the exception: validation sits in a narrow low band (0.72\u20131.10) vs 0.68\u20131.47 in training \u2014 but fully inside the training range.",
+    "decision": "Validation inputs are covered by training data, so no feature has to be extrapolated except time itself."
+  },
+  {
+    "section": "EDA",
+    "file": "10_market_index.png",
+    "title": "Market index over time",
+    "shows": "Left: daily median market_index (grey) and 7-day mean. Right: average by weekday relative to the period mean.",
+    "finding": "Two components: (1) a slow regime \u2014 rises Jan\u2013May, plateaus, falls Aug\u2013Sep, flat Oct\u2013Dec; (2) a very regular 7-day cycle peaking Wed\u2013Thu (\u00b112%) that is identical in train and validation. Within a single day loads differ by only ~0.025.",
+    "decision": "Treat market_index as a market-wide daily signal: impute by daily median and also give the model each load's deviation from it."
+  },
+  {
+    "section": "EDA",
+    "file": "11_quote_signal.png",
+    "title": "quote_signal",
+    "shows": "Left: distribution. Right: mean residual of a distance-only fit by quote_signal vigintile.",
+    "finding": "Correlation with $/mile is only 0.10. The effect is U-shaped: almost flat (about \u22122% to +1%) for the middle 80% of loads, rising to +4\u20138% only in the thin tails (quote_signal < 1.6 or > 2.5). A linear term cannot capture a U-shape.",
+    "decision": "Keep it: its linear coefficient is near zero, but the tree stage can learn the U-shape."
+  },
+  {
+    "section": "EDA",
+    "file": "12_correlations.png",
+    "title": "Correlations between features and target",
+    "shows": "Pearson correlation between numeric features, log(rate) and rate per mile.",
+    "finding": "log_distance dominates log_rate (r = 0.99).  Among the rest, market_index, weight and equipment correlate with $/mile; features are not strongly correlated with each other, so multicollinearity is not a concern for the linear stage.",
+    "decision": ""
+  },
+  {
+    "section": "EDA",
+    "file": "13_city_map.png",
+    "title": "City locations and unseen cities",
+    "shows": "Each city's coordinates as given in the data. Stars = cities that never appear in training.",
+    "finding": "72 cities. Unseen in training: Allentown, Charlotte, Chicago, Jackson, Knoxville, Laredo, Norfolk, San Diego. 1,447 validation loads (12%) touch at least one of them.",
+    "decision": "City name cannot be a model feature (no training rows for 8 of them). Describe lanes by coordinates, distance and circuity instead, which exist for every city."
+  },
+  {
+    "section": "EDA",
+    "file": "14_coordinates_vs_real.png",
+    "title": "Are the coordinates real?",
+    "shows": "Arrows from each city's approximate real location to where the dataset puts it (18 well-known cities).",
+    "finding": "Displacements are large (median 144 miles; Phoenix is moved ~395 miles). So coordinates are synthetic/perturbed, not real geography. However each city has exactly one coordinate pair, and the distance column is consistent with them (median distance \u00f7 great-circle = 1.18, a typical road-circuity factor).",
+    "decision": "Treat coordinates as dataset-internal location signals, not real geography. Do not join external data (e.g. real regional rate indices) on them. This corrects the earlier report wording."
+  },
+  {
+    "section": "EDA",
+    "file": "15_lanes.png",
+    "title": "Lane coverage",
+    "shows": "Left: how many training loads each pickup\u2192delivery lane has. Right: validation loads on lanes with/without training history.",
+    "finding": "Median lane has only 10 loads, and 12% of validation loads are on lanes never seen in training.",
+    "decision": "Lane-level target encoding would be noisy (few loads per lane) and unavailable for 12% of validation. Use smooth geographic features that generalise between lanes."
+  },
+  {
+    "section": "EDA",
+    "file": "16_circuity.png",
+    "title": "Circuity (road vs straight-line distance)",
+    "shows": "Ratio of the distance column to the straight-line distance between the coordinates.",
+    "finding": "Median 1.18; rises above 1.4 only for short lanes (<150 miles straight-line). No impossible values (ratio < 1).",
+    "decision": "The distance column is trustworthy. Circuity is added as a feature for the tree stage."
+  },
+  {
+    "section": "EDA",
+    "file": "17_weekday_month.png",
+    "title": "Calendar patterns in price",
+    "shows": "Mean residual of a distance-only fit by weekday and by month.",
+    "finding": "Weekday pattern mirrors the market_index weekly cycle (Wed\u2013Thu highest). Month pattern rises through spring, peaks in June, dips in Aug\u2013Sep and recovers in Oct.",
+    "decision": "Both are largely explained by market_index; the remainder is studied in the date-effect analysis (validation section)."
+  },
+  {
+    "section": "EDA",
+    "file": "18_outliers.png",
+    "title": "Anomalous price labels",
+    "shows": "Left: ratio of each actual rate to a robust (Huber) log-linear expectation. Right: number of loads flagged as the threshold changes.",
+    "finding": "Normal loads all fall within \u00b119% of expectation. Then there is an empty gap, and 677 loads (1.4%) sit at 0.2\u20130.5\u00d7 or 2\u20135\u00d7. Every threshold from 1.20\u00d7 to 2.19\u00d7 flags exactly these rows. They are spread evenly across months, equipment types and distances, and their features look normal.",
+    "decision": "Treat them as anomalous labels (likely data-entry or unit errors, but not proven) and exclude them from training; the threshold choice does not matter. Still report metrics with them included."
+  },
+  {
+    "section": "EDA",
+    "file": "19_december_lane.png",
+    "title": "History of the December chart lane",
+    "shows": "Every training load on Lexington \u2192 Fort Wayne (the fixed lane in the December chart).",
+    "finding": "32 loads, $758\u2013$974, mixed equipment and weights (dry van only: 21 loads, $758\u2013$934).",
+    "decision": "Sanity reference for the December chart: predictions around $820\u2013$860 for a 32,000 lb dry van sit inside this historical range."
+  },
+  {
+    "section": "EDA",
+    "file": "20_cv_design.png",
+    "title": "Validation design",
+    "shows": "Three expanding-window folds plus the final fit. Dates are inclusive.",
+    "finding": "Each fold reproduces the real task: everything before a cut-off is training data, the next two calendar months are scored. The final model is trained on all of Jan 1 \u2013 Oct 31 and predicts Nov 1 \u2013 Dec 31, the same 2-month horizon.",
+    "decision": "Same folds, rows and metrics for every model compared; outlier detection is re-fitted inside each fold on training months only."
+  }
+]
