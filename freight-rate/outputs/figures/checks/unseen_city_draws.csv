@@ -1,0 +1,6 @@
+draw,cities,n,MAPE cities seen in training,MAPE cities removed from training
+1,"Tulsa, Washington, San Antonio, Memphis, Toledo, Hartford, Bakersfield, New York",2477,1.3523697570541944,1.5014214077958148
+2,"Houston, New York, Jacksonville, Green Bay, Baton Rouge, Reno, Las Vegas, Charleston",2115,1.3843725739619934,1.5293435510121027
+3,"Tulsa, Atlanta, Cincinnati, Salt Lake City, Little Rock, Harrisburg, San Francisco, Bakersfield",2160,1.3834320602348626,1.522398972872046
+4,"Chattanooga, Harrisburg, Phoenix, Tucson, Salt Lake City, Savannah, Green Bay, Mobile",2184,1.3735628261745614,1.4574535194111866
+5,"Fresno, St. Louis, Fort Wayne, New Orleans, Green Bay, Harrisburg, Syracuse, Salt Lake City",1901,1.4003940354894409,1.5145476744206319

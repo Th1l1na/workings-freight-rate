@@ -1,0 +1,134 @@
+{
+  "residual_leakage": {
+    "max_fold_MAPE_diff_pp": 0.003,
+    "residual_corr": 0.9999686727031868,
+    "max_residual_diff_pct": 0.10374142676559117
+  },
+  "trend": {
+    "mean_MAPE_by_k": {
+      "0.0": 1.612,
+      "0.25": 1.582,
+      "0.5": 1.571,
+      "0.75": 1.579,
+      "1.0": 1.606,
+      "1.25": 1.652,
+      "1.5": 1.715
+    },
+    "slopes_pct_per_year": {
+      "Jan\u2013Apr": 10.59,
+      "Jan\u2013Jun": 10.83,
+      "Jan\u2013Aug": 6.78,
+      "Jan\u2013Oct (final)": 7.6
+    },
+    "best_k": 0.5,
+    "no_trend_MAPE": 2.639702825693432
+  },
+  "date_effect": {
+    "in_sample_r2": {
+      "market index only": 0.484,
+      "+ quarter-end ramp": 0.648,
+      "+ linear trend": 0.969
+    },
+    "out_of_sample_rmse_pct_SepOct": {
+      "market index only": 4.933,
+      "+ quarter-end ramp": 4.15,
+      "+ linear trend": 0.977,
+      "naive: last 2 weeks of Aug carried forward": 2.158
+    }
+  },
+  "unseen_cities": [
+    {
+      "draw": 1,
+      "cities": "Tulsa, Washington, San Antonio, Memphis, Toledo, Hartford, Bakersfield, New York",
+      "n": 2477,
+      "MAPE cities seen in training": 1.352,
+      "MAPE cities removed from training": 1.501
+    },
+    {
+      "draw": 2,
+      "cities": "Houston, New York, Jacksonville, Green Bay, Baton Rouge, Reno, Las Vegas, Charleston",
+      "n": 2115,
+      "MAPE cities seen in training": 1.384,
+      "MAPE cities removed from training": 1.529
+    },
+    {
+      "draw": 3,
+      "cities": "Tulsa, Atlanta, Cincinnati, Salt Lake City, Little Rock, Harrisburg, San Francisco, Bakersfield",
+      "n": 2160,
+      "MAPE cities seen in training": 1.383,
+      "MAPE cities removed from training": 1.522
+    },
+    {
+      "draw": 4,
+      "cities": "Chattanooga, Harrisburg, Phoenix, Tucson, Salt Lake City, Savannah, Green Bay, Mobile",
+      "n": 2184,
+      "MAPE cities seen in training": 1.374,
+      "MAPE cities removed from training": 1.457
+    },
+    {
+      "draw": 5,
+      "cities": "Fresno, St. Louis, Fort Wayne, New Orleans, Green Bay, Harrisburg, Syracuse, Salt Lake City",
+      "n": 1901,
+      "MAPE cities seen in training": 1.4,
+      "MAPE cities removed from training": 1.515
+    }
+  ],
+  "outlier_handling": [
+    {
+      "variant": "anomalies kept in training",
+      "subset": "all labels",
+      "MAPE": 4.907,
+      "MAE": 112.349,
+      "RMSE": 628.974
+    },
+    {
+      "variant": "anomalies kept in training",
+      "subset": "clean labels",
+      "MAPE": 2.54,
+      "MAE": 58.623,
+      "RMSE": 88.839
+    },
+    {
+      "variant": "anomalies removed (used)",
+      "subset": "all labels",
+      "MAPE": 3.978,
+      "MAE": 92.874,
+      "RMSE": 624.993
+    },
+    {
+      "variant": "anomalies removed (used)",
+      "subset": "clean labels",
+      "MAPE": 1.606,
+      "MAE": 38.903,
+      "RMSE": 57.212
+    }
+  ],
+  "december_scenarios": {
+    "A: observed daily market index (validation.csv) \u2014 submitted": [
+      825.11,
+      861.31,
+      843.24
+    ],
+    "B: training-only forecast (October weekday profile)": [
+      829.89,
+      857.98,
+      842.91
+    ],
+    "C: market index held at October average": [
+      836.29,
+      854.82,
+      843.64
+    ],
+    "A with trend frozen at Oct 31 (k = 0)": [
+      819.99,
+      850.83,
+      835.49
+    ],
+    "A with half-speed trend (k = 0.5)": [
+      822.54,
+      856.06,
+      839.36
+    ]
+  },
+  "december_A_vs_B_mean_diff_pct": -0.03909249385026792
+}

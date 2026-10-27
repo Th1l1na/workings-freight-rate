@@ -1,0 +1,50 @@
+[
+  {
+    "section": "Checks",
+    "file": "01_residual_leakage.png",
+    "title": "Is stage 2 trained on leaky residuals?",
+    "shows": "Left: fold MAPE when the stage-2 models learn in-sample Ridge residuals (submitted) vs out-of-fold Ridge residuals (each row's residual from a Ridge fitted on the other 80% of rows). Right: the two kinds of residual for the same rows (5,000-row sample, final training set).",
+    "finding": "Largest fold difference 0.003 points. The residuals are practically identical (correlation 0.99997, largest difference 0.10% of price): Ridge has 8 coefficients fitted on 15,000\u201347,000 rows, so it cannot memorise its own rows. (A time-blocked out-of-fold version, tried first, was worse \u2014 1.9% on fold 1 \u2014 because holding out a whole period makes the residuals contain period-level errors, which is a different problem from leakage.) Both variants are always scored on later months.",
+    "decision": "Keep the simpler in-sample residuals; document the check."
+  },
+  {
+    "section": "Checks",
+    "file": "02_trend.png",
+    "title": "The time trend: what it does and how far to push it",
+    "shows": "Left: CV MAPE when, after the last training date, the trend continues at k \u00d7 its fitted slope (k = 0 freezes the level at the training end; k = 1 is the submitted model). Dotted line: the same model trained without any trend term. Right: fitted drift for different training windows.",
+    "finding": "Two separate effects. (1) Having a trend term at all is what matters: without it MAPE is 2.64% vs 1.61%, because the model otherwise prices every month at the training-period average level instead of the latest level. (2) How far to extend it beyond the training end matters little and depends on the period: across k = 0\u20131.5 the mean moves only 1.57\u20131.71%. Extending helps in fold 3 (1.65% \u2192 1.39%) and hurts in fold 2 (1.64% \u2192 2.04%), where the slope was estimated from Jan\u2013Jun only (10.8%/yr, later revised to 7.6%/yr).",
+    "decision": "Keep k = 1. The mean-optimal k = 0.5 is chosen from only three folds and differs from k = 1 by a few hundredths of a point, so tuning it would be over-fitting. The December chart is shown under k = 0, 0.5 and 1 (check 6) so the reader can see the assumption."
+  },
+  {
+    "section": "Checks",
+    "file": "03_date_effect.png",
+    "title": "The date effect: how the 0.97 is defined and whether it carries forward",
+    "shows": "Step 1: regress log(rate) on load features (log distance, equipment, log weight, quote_signal, the load's market-index deviation) plus one dummy per date (304 dates, clean labels). The dummy coefficients are the per-date price levels. Step 2: regress those levels on daily log(market_index), the quarter-end ramp and a linear trend. Left: ordinary in-sample R\u00b2 of step 2. Middle/right: step 2 fitted on Jan\u2013Aug dates only, then used to predict the Sep\u2013Oct levels.",
+    "finding": "In-sample R\u00b2 rises 0.48 \u2192 0.65 \u2192 0.97. Out of sample, the 3-term model predicts the daily price level of unseen Sep\u2013Oct within 0.98% RMSE, vs 2.16% for carrying the last level forward and 4.93% for market index alone (which gets the weekly wiggle but not the level). R\u00b2 is not used out of sample because a 2-month window has little variance, which makes R\u00b2 unstable.",
+    "decision": "Describe 0.97 as an in-sample, descriptive figure; use the out-of-sample error as the evidence that the structure carries forward two months. It does not prove it holds in Nov\u2013Dec."
+  },
+  {
+    "section": "Checks",
+    "file": "04_unseen_cities.png",
+    "title": "Generalisation to unseen cities",
+    "shows": "For each draw, 8 random cities are chosen. The same fold-3 loads touching them are predicted by a model trained with those cities and one trained with every load touching them removed.",
+    "finding": "Removing the cities raises MAPE by 0.13 points on average (range 0.08 to 0.15); MAPE stays at 1.46\u20131.53%. The random cities are not the 8 real unseen validation cities (those have no labels), so this tests unseen cities in general.",
+    "decision": "Evidence (not proof) that predictions for the 1,447 validation loads touching new cities should be close in quality to the rest."
+  },
+  {
+    "section": "Checks",
+    "file": "05_outlier_impact.png",
+    "title": "Does removing anomalous labels help?",
+    "shows": "Two-stage model trained with vs without the flagged labels (detector fitted per fold on training months), scored on clean labels and on all labels.",
+    "finding": "Removing them improves accuracy on normal loads AND on all loads (anomalies included): a few labels at 3\u20135\u00d7 or 0.2\u20130.4\u00d7 pull a log-scale model's fit away from the bulk of the data, so keeping them makes every prediction slightly worse. The all-label error stays high either way because no model can anticipate a 4\u00d7 label.",
+    "decision": "Exclude them from training; report both metrics."
+  },
+  {
+    "section": "Checks",
+    "file": "06_december_scenarios.png",
+    "title": "December chart: sensitivity to assumptions",
+    "shows": "The fixed Lexington \u2192 Fort Wayne dry-van load priced for every December day under alternative inputs. A (submitted) uses the market_index and quote_signal values supplied for those dates in validation.csv \u2014 input features only, never labels. B and C use training data only: October training rows for market_index and quote_signal, and no validation value enters any feature (inputs saved in december_scenario_inputs.csv). The last two curves vary the trend.",
+    "finding": "All scenarios lie within a $41 band (~5% of the price). The training-only forecast B differs from A by -0.0% on average (largest daily gap $5), because the weekly market pattern is very regular. The trend assumption shifts the level by about 1%.",
+    "decision": "Submit A: the assessment supplies these feature values for the December dates. If only the seven chart columns may be used, B is the alternative and gives nearly the same curve."
+  }
+]
