@@ -55,6 +55,16 @@ def table(doc, header, rows, widths=None, bold_rows=()):
                     run.font.size = Pt(8.5)
             if widths:
                 cell.width = Inches(widths[i])
+    if widths:  # Word and LibreOffice both need fixed layout + grid widths to respect column sizes
+        t.autofit = False
+        tbl_pr = t._tbl.tblPr
+        layout = OxmlElement("w:tblLayout")
+        layout.set(qn("w:type"), "fixed")
+        tbl_pr.append(layout)
+        for i, col in enumerate(t.columns):
+            col.width = Inches(widths[i])
+        for i, gc in enumerate(t._tbl.tblGrid.findall(qn("w:gridCol"))):
+            gc.set(qn("w:w"), str(int(widths[i] * 1440)))
     doc.add_paragraph()
 
 
@@ -91,6 +101,7 @@ def main():
     boot = pd.read_csv("outputs/model_bootstrap_vs_lightgbm_hybrid.csv")
     draws = pd.read_csv(FIG / "checks/unseen_city_draws.csv")
     coef = summary["linear_coefficients"]
+    F = json.loads(Path("outputs/facts.json").read_text())
 
     clean = cv[cv.subset == "clean labels"]
     allr = cv[cv.subset == "all labels"]
@@ -99,6 +110,8 @@ def main():
     s_a = cvs[(cvs.model == FINAL) & (cvs.subset == "all labels")].iloc[0]
     lgb_c = cvs[(cvs.model == "LightGBM only") & (cvs.subset == "clean labels")].iloc[0]
     base_c = cvs[(cvs.model == "Baseline: median $/mile") & (cvs.subset == "clean labels")].iloc[0]
+    base_a = cvs[(cvs.model == "Baseline: median $/mile") & (cvs.subset == "all labels")].iloc[0]
+    lgb_a = cvs[(cvs.model == "LightGBM only") & (cvs.subset == "all labels")].iloc[0]
     one_c = cvs[(cvs.model == "Two-stage, LightGBM residual only") & (cvs.subset == "clean labels")].iloc[0]
     ens_name = "Ensemble: LightGBM + XGBoost + Extra Trees (hybrids)"
     e_all = boot[(boot.model == ens_name) & (boot.window == "all 3 folds")].iloc[0]
@@ -140,12 +153,17 @@ def main():
         ["Chosen model", "Ridge regression on log(rate) for the drivers that must extrapolate (distance, "
                          "equipment, weight, market index, quarter-end, trend) + equal-weight average of LightGBM, "
                          "XGBoost and Extra Trees trained on the Ridge residual"],
-        ["CV accuracy, normal loads", f"MAPE {pct(s_c['MAPE fold-mean'])}, MAE ${s_c['MAE fold-mean']:.0f}, "
-                                      f"bias {s_c['Bias% fold-mean']:+.2f}% (mean of 3 folds, "
-                                      f"{int(s_c.n_total):,} loads)"],
-        ["CV accuracy, all loads", f"MAPE {pct(s_a['MAPE fold-mean'])} including the 1.4% anomalous labels"],
-        ["Reference points", f"LightGBM alone {pct(lgb_c['MAPE fold-mean'])}; rate-per-mile baseline "
-                             f"{pct(base_c['MAPE fold-mean'])}"],
+        ["Expected error on ALL loads", f"MAPE {pct(s_a['MAPE fold-mean'])}, MAE ${s_a['MAE fold-mean']:.0f} "
+                                        f"(mean of 3 folds, {int(s_a.n_total):,} loads). This is the realistic "
+                                        f"figure if every load is scored: it includes the "
+                                        f"{summary['label_outliers'] / summary['train_rows'] * 100:.1f}% of labels at 2–5× or "
+                                        "0.2–0.5× the expected rate, which no model can anticipate."],
+        ["Error on normal loads", f"MAPE {pct(s_c['MAPE fold-mean'])}, MAE ${s_c['MAE fold-mean']:.0f}, "
+                                  f"bias {s_c['Bias% fold-mean']:+.2f}% ({int(s_c.n_total):,} loads, anomalous "
+                                  f"labels excluded); {F['within_5pct']:.0f}% of loads within ±5%"],
+        ["Reference points (normal / all loads)",
+         f"LightGBM alone {pct(lgb_c['MAPE fold-mean'])} / {pct(lgb_a['MAPE fold-mean'])}; rate-per-mile baseline "
+         f"{pct(base_c['MAPE fold-mean'])} / {pct(base_a['MAPE fold-mean'])}"],
     ], widths=[1.7, 5.0])
 
     # ============================================================ 1 data
@@ -161,15 +179,18 @@ def main():
     bullet(doc, " market_index has a strong 7-day cycle (Wed–Thu peak) around a slow regime that rises "
                 "Jan–May and falls Aug–Sep (Figure 2). In validation it sits in a narrow low band that is fully "
                 "inside the training range.", "Market index.")
-    bullet(doc, " 8 cities in validation.csv never occur in training; 1,447 validation loads (12%) touch one. "
+    bullet(doc, f" {F['n_unseen_cities']} cities in validation.csv never occur in training; "
+                f"{F['n_unseen_city_val_loads']:,} validation loads ({F['pct_unseen_city_val_loads']:.0f}%) touch one. "
                 "City name therefore cannot be a feature; lanes are described by coordinates, distance and circuity.",
            "Unseen cities.")
-    bullet(doc, " Each city has one consistent coordinate pair, and the distance column agrees with them (median "
-                "road ÷ straight-line distance 1.18). But they are not the real locations: compared with "
-                "approximate real coordinates for 18 well-known cities they are displaced by a median of ~140 miles "
-                "(Phoenix by ~395). They are treated as dataset-internal location signals, never joined to "
+    bullet(doc, f" Each city has one consistent coordinate pair, and the distance column agrees with them (median "
+                f"road ÷ straight-line distance {F['circuity_median']:.2f}). But they are not the real locations: "
+                f"compared with approximate real coordinates for {F['n_real_coord_cities']} well-known cities they are "
+                f"displaced by a median of ~{F['coord_offset_median_miles']:.0f} miles (Phoenix by "
+                f"~{F['coord_offset_phoenix_miles']:.0f}). They are treated as dataset-internal location signals, never joined to "
                 "external geographic data.", "Coordinates are synthetic.")
-    bullet(doc, " quote_signal adds little (linear coefficient ≈ 0.01; a weak U-shape only in the tails).",
+    bullet(doc, f" quote_signal adds little (linear coefficient {coef['quote_signal']:.3f}; a weak U-shape only in "
+                "the tails).",
            "Weak signal.")
     figure(doc, FIG / "eda/01_timeline.png", "Figure 1. Loads per day in each file.", 5.8)
     figure(doc, FIG / "eda/10_market_index.png", "Figure 2. Daily market_index and its weekday profile.", 6.2)
@@ -177,19 +198,26 @@ def main():
     # ============================================================ 2 quality
     doc.add_heading("2. Data-quality issues and how they were handled", 1)
     table(doc, ["Issue", "Extent", "Evidence", "Treatment"], [
-        ["Anomalous posted_rate labels", f"{summary['label_outliers']} rows (1.4%)",
-         "Ratio to a robust (Huber) log-linear expectation: normal loads within ±19%, then an empty gap, then two "
-         "clusters at 0.2–0.5× and 2–5×. Any threshold from 1.2× to 2× flags exactly the same rows (Figure 3). "
+        ["Anomalous posted_rate labels", f"{summary['label_outliers']} rows "
+                                         f"({summary['label_outliers'] / summary['train_rows'] * 100:.1f}%)",
+         f"Ratio to a robust (Huber) log-linear expectation: normal loads within ±{F['normal_label_band_pct']:.0f}%, "
+         "then an empty gap, then two clusters at 0.2–0.5× and 2–5×. Any threshold from "
+         f"{F['outlier_plateau_low']:.1f}× to {F['outlier_plateau_high']:.1f}× flags exactly the same rows (Figure 3). "
          "Spread evenly over months, equipment and distance; their features look normal.",
          "Called anomalous (likely entry/unit errors, not proven). Excluded from training; the detector is "
          "re-fitted inside each fold on training months only. Metrics reported with and without them."],
-        ["Negative weight", f"{summary['negative_weights_fixed']} train / 145 validation",
-         "Magnitudes match normal loads (median ~32,000 lb)", "Absolute value + indicator"],
-        ["Missing weight", f"{summary['missing_weight']} train / 165 validation", "Evenly spread: 0.4–0.8% in every month and equipment type",
-         "Native NaN handling (LightGBM/XGBoost) + missing flag; training median for Ridge/Extra Trees"],
-        ["Missing market_index", f"{summary['missing_market_index_imputed']} train / 249 validation",
-         "Within-day spread is tiny (std ~0.025)", "That day's median market_index (a feature, never a label)"],
-        ["Weight cap", "2.5% at exactly 47,500 lb", "Spike at the maximum in both files", "Kept (plausible cap)"],
+        ["Negative weight", f"{summary['negative_weights_fixed']} train / {F['n_neg_weight_val']} validation",
+         f"Magnitudes match normal loads (median {F['neg_weight_median_lb']:,.0f} lb)", "Absolute value + indicator"],
+        ["Missing weight", f"{summary['missing_weight']} train / {F['n_missing_weight_val']} validation",
+         f"Evenly spread: {F['missing_weight_pct_min']:.1f}–{F['missing_weight_pct_max']:.1f}% in every month",
+         "Native NaN handling (LightGBM/XGBoost) + missing flag; otherwise equipment median from Jan–Apr training "
+         "rows only (before the first evaluation window, so no fold sees a statistic from its own future)"],
+        ["Missing market_index", f"{summary['missing_market_index_imputed']} train / {F['n_missing_mi_val']} validation",
+         f"Within-day spread is tiny (std {F['within_day_mi_std']:.3f})",
+         "That day's median market_index. Feature values only; train and validation share no dates, so "
+         "validation rows never change a training-date value"],
+        ["Weight cap", f"{F['weight_cap_share_pct']:.1f}% at exactly 47,500 lb", "Spike at the maximum in both files",
+         "Kept (plausible cap)"],
         ["Synthetic coordinates", "all cities", "See section 1", "Used only as internal location signals"],
         ["Duplicates, unknown categories, conflicting coordinates", "none", "Checked", "—"],
     ], widths=[1.3, 1.0, 2.5, 2.0])
@@ -234,8 +262,8 @@ def main():
            "Metrics.")
     para(doc, "Definitions (y = actual, ŷ = prediction, n loads):  MAE = mean |ŷ − y|;  RMSE = √mean (ŷ − y)²;  "
               "MAPE = 100 × mean |ŷ − y| / y;  Bias = 100 × mean (ŷ − y) / y, so positive bias = over-prediction. "
-              "A MAPE of 1.6% is an average; it does not mean every load is within 1.6% (69% are within 2% and "
-              "98% within 5%, see diagnostics).")
+              f"A MAPE of {s_c['MAPE fold-mean']:.1f}% is an average; it does not mean every load is within that "
+              f"({F['within_2pct']:.0f}% are within 2% and {F['within_5pct']:.0f}% within 5%, see diagnostics).")
 
     # ============================================================ 4 model choice
     doc.add_heading("4. Model selection", 1)
@@ -265,9 +293,11 @@ def main():
     figure(doc, FIG / "models/01_direct_vs_hybrid.png",
            "Figure 5. Every algorithm is more accurate on top of the Ridge base than on its own.")
     para(doc, " Tree models cannot extrapolate: given a time feature, they predict the same level for every date "
-              "after their last split, so direct trees under-predict later months (bias −1.2% to −2.9% in folds 1 "
-              "and 3). Ridge carries the level forward; the trees learn only patterns that repeat. This is the "
-              "single largest design decision, worth 0.5–1 point of MAPE.", "Why hybrid wins.")
+              f"after their last split, so direct trees under-predict later months (bias "
+              f"{F['direct_tree_bias_f13_max']:.1f}% to {F['direct_tree_bias_f13_min']:.1f}% in folds 1 and 3, all "
+              "five tree learners). Ridge carries the level forward; the trees learn only patterns that repeat. "
+              f"This is the single largest design decision, worth {F['direct_minus_hybrid_tree_mape_min']:.1f}–"
+              f"{F['direct_minus_hybrid_tree_mape_max']:.1f} points of MAPE.", "Why hybrid wins.")
     figure(doc, FIG / "models/04_ensemble_significance.png",
            "Figure 6. Difference vs Ridge + LightGBM with 95% bootstrap intervals (whole dates resampled).")
     para(doc, f" Averaging LightGBM, XGBoost and Extra Trees residual models improves MAPE by "
@@ -279,7 +309,8 @@ def main():
               "ensembles: with 2–3 folds the weights over-fit.", "Is the ensemble worth it?")
     para(doc, " best mean MAPE across folds, unless significantly worse on the most recent fold. The chosen "
               f"ensemble ({pct(s_c['MAPE fold-mean'])}) beats the single-LightGBM version ({pct(one_c['MAPE fold-mean'])}); "
-              "the gain is modest (~$2 MAE) for ~3× training time (~10 s per fit). Caveat: picking the best of 21 "
+              f"the gain is modest (${F['ensemble_mae_gain']:.1f} MAE) for ~3× training time. Caveat: picking the "
+              f"best of {len(comp)} "
               "candidates on the same folds makes the winner's score slightly optimistic; the size of the gaps "
               "between tiers is far larger than that effect.", "Selection rule:")
 
@@ -299,7 +330,8 @@ def main():
     para(doc, f"Fold 2 is weakest: trained on Jan–Jun only, the fitted trend was too steep ({sl['Jan–Jun']:.1f}%/yr "
               f"vs {sl['Jan–Oct (final)']:.1f}%/yr with all data), so Jul–Aug was over-predicted by "
               f"{fin_c[fin_c.fold == 2]['Bias%'].iloc[0]:.1f}%. Errors also grow within each 2-month window "
-              "(about 1.3% MAPE in the first two weeks to 1.8% in the last two), so late-December predictions are "
+              f"(about {F['first2w_mape']:.1f}% MAPE in the first two weeks to {F['last2w_mape']:.1f}% in the last "
+              "two), so late-December predictions are "
               "expected to be less accurate than early-November ones.")
     figure(doc, FIG / "diagnostics/04_error_over_time.png", "Figure 7. Out-of-fold error over time.", 6.2)
 
@@ -343,6 +375,30 @@ def main():
               "on log(daily market_index), the quarter-end ramp and a linear trend. 0.97 is the ordinary in-sample "
               "R² of step 2. It describes the history; it is not proof that the same relationship holds in Nov–Dec.")
     figure(doc, FIG / "checks/04_unseen_cities.png", "Figure 10. Unseen-city stress test, 5 random draws.", 5.8)
+    doc.add_heading("Unseen-city test: exact design", 3)
+    f3 = fin_c[fin_c.fold == 3].iloc[0]
+    bullet(doc, " Fold 3 only (train 1 Jan – 31 Aug, evaluate 1 Sep – 31 Oct), using training data only. "
+                "validation.csv is never used, since it has no labels.", "Data.")
+    bullet(doc, " For each draw, 8 cities are sampled at random (seed 42) from the 64 training cities. They are "
+                "NOT the 8 real unseen validation cities (Allentown, Charlotte, Chicago, Jackson, Knoxville, Laredo, "
+                "Norfolk, San Diego), which cannot be scored. So the test measures generalisation to unseen cities in "
+                "general, not to those specific ones.", "Cities.")
+    bullet(doc, " Every training load whose pickup OR delivery is one of the 8 cities is removed before fitting "
+                "(the anomaly detector is also re-fitted without them).", "Removal.")
+    bullet(doc, " Only clean Sep–Oct loads touching at least one of the 8 cities are scored. The number differs from "
+                f"the {F['n_unseen_city_val_loads']:,} validation loads because it depends on which cities are drawn.",
+           "Evaluation.")
+    bullet(doc, f" The same loads are also predicted by a model trained WITH those cities. The difference isolates "
+                f"the cost of never having seen a city. (Ordinary fold-3 MAPE on all clean loads: {pct(f3.MAPE)}.)",
+           "Comparison.")
+    table(doc, ["Draw", "Held-out cities", "Loads scored", "MAPE, cities seen", "MAPE, cities removed", "Cost"],
+          [[int(r.draw), r.cities, f"{int(r.n):,}", pct(r.iloc[3]), pct(r.iloc[4]), f"+{r.iloc[4] - r.iloc[3]:.2f} pt"]
+           for _, r in draws.iterrows()], widths=[0.4, 3.0, 0.7, 0.8, 0.8, 0.6])
+    gap_ = (draws.iloc[:, 4] - draws.iloc[:, 3])
+    para(doc, f"Interpretation: the model loses {gap_.min():.2f}–{gap_.max():.2f} points of MAPE on loads touching a "
+              "city it has never seen. "
+              "This is evidence that the coordinate-based features let it generalise to new cities. It does not prove "
+              "that coordinates alone cause this, or that the 8 real validation cities behave the same way.")
 
     # ============================================================ 7 December
     doc.add_heading("7. Fixed December prediction chart", 1)
@@ -352,10 +408,23 @@ def main():
     para(doc, " The chart file has no coordinates, market_index or quote_signal. Coordinates come from the city "
               "lookup. market_index and quote_signal are the medians of the values supplied in validation.csv "
               "for each December date: these are input features provided by the assessment, and no label is used. "
-              "The values used are saved in outputs/december_inputs_used.csv.", "Inputs.")
+              "The values used are saved in outputs/december_inputs_used.csv. The instructions do not say whether "
+              "these supplied feature values may be used for the chart; if only the seven chart columns are allowed, "
+              "scenario B in Figure 12 (training data only) is the alternative, and it gives nearly the same curve.",
+         "Inputs.")
     para(doc, f" The weekly market cycle drives the 7-day wave; the quarter-end ramp and trend lift prices into "
-              f"year end (${dec_a[0]:.0f} → ${dec_a[1]:.0f}). For reference, the 21 Dry Van loads on this lane in "
-              "training ranged $758–$934.", "Shape.")
+              f"year end (${dec_a[0]:.0f} → ${dec_a[1]:.0f}). For reference, the {F['lane_dryvan_n']} Dry Van loads on "
+              f"this lane in training ranged ${F['lane_dryvan_min']:.0f}–${F['lane_dryvan_max']:.0f}.", "Shape.")
+    dch = pd.read_csv("december_predictions.csv", parse_dates=["date"]).set_index("date").predicted_rate
+    xmas = dch.loc["2025-12-25"]
+    xrank = int((dch > xmas).sum()) + 1
+    para(doc, f" Christmas Day is priced at ${xmas:.0f}, the {xrank}{'st' if xrank == 1 else 'nd' if xrank == 2 else 'rd' if xrank == 3 else 'th'} "
+              f"highest of the 31 days (peak ${dch.max():.0f} on {dch.idxmax():%d %b}). That is not learned "
+              f"holiday behaviour: 25 Dec 2025 is a {pd.Timestamp('2025-12-25'):%A} (the weekly market peak is "
+              "Wed–Thu) and late December is in the quarter-end window, where the data shows rates rising in "
+              "March, June and September. The training data contains no Christmas, so whether "
+              "holiday demand pushes rates up or down cannot be checked. Treat late-December values as the least "
+              "certain part of the chart.", "Christmas.")
     figure(doc, FIG / "checks/06_december_scenarios.png",
            "Figure 12. The same lane under alternative assumptions. B and C use training data only.")
     para(doc, " If the December market_index were not available, a forecast from October's weekday profile gives "
@@ -369,7 +438,8 @@ def main():
     bullet(doc, " Less than one year of history and no prior December; the trend and quarter-end effect are "
                 "assumed to continue. Re-estimate monthly; error grows over a 2-month horizon, so frequent "
                 "retraining helps.", "Time.")
-    bullet(doc, " Short hauls are under-predicted by ~0.5% and the longest over-predicted by ~0.8%; a distance "
+    bullet(doc, f" Short hauls are under-predicted by ~{abs(F['short_haul_bias']):.1f}% and the longest over-predicted "
+                f"by ~{F['long_haul_bias']:.1f}%; a distance "
                 "spline in the Ridge stage would address this.", "Distance shape.")
     bullet(doc, " If the anomalous labels have a known cause (e.g. unit or per-mile entry), they could be corrected "
                 "instead of dropped.", "Anomalies.")
