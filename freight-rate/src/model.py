@@ -3,10 +3,12 @@
 Stage 1  Ridge regression on log(rate) with a small set of interpretable,
          extrapolating drivers: distance elasticity, equipment premium,
          weight, market index, quarter-end ramp and a linear time trend.
-Stage 2  LightGBM on the stage-1 residual, capturing lane geography and
-         non-linear interactions, without features that cannot extrapolate.
+Stage 2  Equal-weight average of three learners (LightGBM, XGBoost, Extra
+         Trees) trained on the stage-1 residual, capturing lane geography and
+         non-linear interactions, without features that cannot extrapolate
+         (no absolute time, no city names). Chosen in src/compare.py.
 
-Prediction = exp(stage1 + stage2).
+Prediction = exp(stage1 + mean(stage2 learners)).
 """
 from __future__ import annotations
 
