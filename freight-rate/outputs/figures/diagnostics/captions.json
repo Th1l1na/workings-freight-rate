@@ -1,0 +1,66 @@
+[
+  {
+    "section": "Diagnostics",
+    "file": "01_pred_vs_actual.png",
+    "title": "Predicted vs actual (out-of-fold)",
+    "shows": "Every out-of-fold prediction from the 3 time folds (each predicted by a model that never saw its month).",
+    "finding": "Clean labels hug the diagonal: 69% of loads within \u00b12%, 98% within \u00b15%, 100.0% within \u00b110%. The anomalous labels (right, orange) sit far off the line on both sides; the model predicts a normal price for them, which is the intended behaviour.",
+    "decision": ""
+  },
+  {
+    "section": "Diagnostics",
+    "file": "02_error_distribution.png",
+    "title": "Size of errors",
+    "shows": "Left: histogram of signed % error. Right: cumulative share of loads with absolute error below x.",
+    "finding": "Errors are symmetric and centred near zero (mean +0.33%, median +0.25%). 90th percentile absolute error: 3.4%.",
+    "decision": ""
+  },
+  {
+    "section": "Diagnostics",
+    "file": "03_error_by_segment.png",
+    "title": "Where does the model err?",
+    "shows": "Grey bars: MAPE per segment. Red line: mean signed % error (bias; + = over-prediction).",
+    "finding": "Accuracy (MAPE) is similar in every equipment, distance, weight and weekday segment (1.5\u20131.9%). Bias shows mild structure: short hauls (<250 mi) are under-predicted by 0.5% and the longest hauls over-predicted by 0.8%, a hint that the single distance exponent is slightly too steep at the extremes. The largest structure is by month (-1.0% to +2.0%): the remaining error is mostly about the market level of a period.",
+    "decision": "Acceptable (all segment biases within \u00b11%). A possible next step is a distance spline in stage 1. The month-level bias is the main risk for Nov\u2013Dec, hence the trend checks."
+  },
+  {
+    "section": "Diagnostics",
+    "file": "04_error_over_time.png",
+    "title": "Error over time",
+    "shows": "Daily mean signed error and 7-day MAPE across the three evaluation windows (dashed lines = fold boundaries).",
+    "finding": "Errors grow with distance from the training cut-off. Mean MAPE goes from 1.29% in the first two weeks of a fold to 1.83% in the last two, and the bias drifts by +0.6 / +1.6 / -1.1 points (folds 1/2/3) over the 8 weeks, in a direction that depends on how the market moved. Fold 2 (Jul\u2013Aug) runs high: it was trained on only six months, when the trend was over-estimated (see checks).",
+    "decision": "Expect late-December predictions to be less accurate than early-November ones (roughly 1.8% vs 1.3% MAPE if the pattern repeats). Retraining weekly or monthly in production would keep the horizon short."
+  },
+  {
+    "section": "Diagnostics",
+    "file": "05_feature_importance.png",
+    "title": "Feature importance",
+    "shows": "Mean absolute contribution of each feature to log(rate) on the training rows: Ridge coefficient \u00d7 centred feature for stage 1 (teal); exact SHAP values of the LightGBM member of the stage-2 ensemble (gold; the XGBoost and Extra Trees members learn the same residual and are not shown). Log scale.",
+    "finding": "Distance dominates (moves price by ~52% on average). Then equipment, weight, market index, quarter-end and trend in stage 1. Stage-2 corrections are small (mostly geography: pickup/delivery coordinates), refining the price by a few percent.",
+    "decision": "Confirms the design: the extrapolating drivers are in stage 1, the tree stage only refines."
+  },
+  {
+    "section": "Diagnostics",
+    "file": "06_geography.png",
+    "title": "Learned geographic effects",
+    "shows": "Average SHAP contribution of the pickup (left) and delivery (right) coordinates, per city, as a % price adjustment.",
+    "finding": "Smooth regional patterns rather than city-by-city noise, which is what lets the model price cities it has never seen from their location.",
+    "decision": ""
+  },
+  {
+    "section": "Diagnostics",
+    "file": "07_continuity.png",
+    "title": "Do the Nov\u2013Dec predictions join the history sensibly?",
+    "shows": "Median rate per mile per day: actual training labels, out-of-fold predictions, and the submitted predictions for November\u2013December.",
+    "finding": "The submitted predictions continue the October level and keep the same weekly rhythm; no jump at 1 November. Validation median $/mile 2.18 vs October actual 2.17.",
+    "decision": ""
+  },
+  {
+    "section": "Diagnostics",
+    "file": "08_validation_predictions.png",
+    "title": "Sanity of the submitted predictions",
+    "shows": "Left: submitted validation predictions vs training actuals. Right: predicted $/mile by distance and equipment for the 12,000 validation loads.",
+    "finding": "All 12,000 predictions are positive and finite ($194\u2013$7,001); the distribution matches training, and the distance/equipment structure is preserved for every load including the unseen cities.",
+    "decision": ""
+  }
+]
