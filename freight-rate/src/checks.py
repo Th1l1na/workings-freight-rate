@@ -15,7 +15,7 @@ import pandas as pd
 from sklearn.linear_model import LinearRegression, Ridge
 from sklearn.model_selection import KFold
 
-from .features import GBM_FEATURES, LINEAR_FEATURES, build_features, clean
+from .features import GBM_FEATURES, LINEAR_FEATURES, build_features, clean, weight_fill_values
 from .model import GBM_PARAMS, GBM_ROUNDS, TwoStageRateModel, apply_outlier_detector, fit_outlier_detector
 from .plotting import ACCENT, BAD, GOLD, GOOD, INK, MUTED, FigureRegistry
 from .train import FOLDS, load, metrics
@@ -59,9 +59,16 @@ def main(out_dir="outputs/figures/checks", only=None):
         reg.items = json.loads((Path(out_dir) / "captions.json").read_text())
     summary_path = Path(out_dir) / "checks_summary.json"
     results = json.loads(summary_path.read_text()) if (only and summary_path.exists()) else {}
+    # keys written by each check; a re-run check replaces its own keys, and keys
+    # from earlier versions of this script are always dropped
+    keys = {1: ["residual_leakage"], 2: ["trend"], 3: ["date_effect"], 4: ["unseen_cities"],
+            5: ["outlier_handling"], 6: ["december_scenarios", "december_A_vs_B_mean_diff_pct"]}
+    current = {k for v in keys.values() for k in v}
+    results = {k: v for k, v in results.items() if k in current and not any(
+        k in keys[n] for n in (only or keys))}
     run = (lambda n: True) if not only else (lambda n: n in only)
     train, valid, daily_mi = load(Path("data"))
-    wf = train.groupby("equipment")["weight"].median().to_dict()
+    wf = weight_fill_values(train)
     feats = build_features(train, wf)
     log_y = np.log(train["posted_rate"])
     y = train["posted_rate"].values
@@ -351,18 +358,37 @@ def main(out_dir="outputs/figures/checks", only=None):
             "B: training-only forecast (October weekday profile)": dec.date.dt.dayofweek.map(weekday_prof).values,
             "C: market index held at October average": np.full(len(dec), oct_mi.mean()),
         }
+        # A uses the same inputs as the submitted file (feature values supplied in
+        # validation.csv). B and C use TRAINING DATA ONLY: market_index from October
+        # training rows, quote_signal = October training median, and the daily
+        # "market median" passed to clean() is the scenario value itself, so the
+        # market_index_dev feature is 0 and no validation value enters.
         daily_qs = pd.concat([train, valid]).groupby("date")["quote_signal"].median()
-        qs = dec.date.map(daily_qs).values  # same quote_signal input as the submitted file
+        oct_rows = train[(train["date"] >= "2025-10-01") & (train["date"] < "2025-11-01")]
+        oct_mi = oct_rows.groupby("date")["market_index"].median()
+        weekday_prof = oct_mi.groupby(oct_mi.index.dayofweek).mean()
+        scen_mi["B: training-only forecast (October weekday profile)"] = dec.date.dt.dayofweek.map(weekday_prof).values
+        scen_mi["C: market index held at October average"] = np.full(len(dec), oct_mi.mean())
+        qs_oct = float(oct_rows["quote_signal"].median())
         t_end = feats.loc[keep_final, "trend_years"].max()
-        curves = {}
+        curves, inputs_used = {}, []
         for name, m_i in scen_mi.items():
             d = dec.copy()
-            d["market_index"], d["quote_signal"] = m_i, qs
-            f = build_features(clean(d, daily_mi), wf)
+            d["market_index"] = m_i
+            if name.startswith("A: "):
+                d["quote_signal"] = dec.date.map(daily_qs).values
+                day_median = daily_mi
+            else:
+                d["quote_signal"] = qs_oct
+                day_median = pd.Series(m_i, index=pd.DatetimeIndex(dec.date))
+            f = build_features(clean(d, day_median), wf)
             curves[name] = final.predict(f)
-        d = dec.copy()
-        d["market_index"], d["quote_signal"] = scen_mi[list(scen_mi)[0]], qs
-        fA = build_features(clean(d, daily_mi), wf)
+            if name.startswith("A: "):
+                fA = f
+            inputs_used.append(pd.DataFrame({"scenario": name[:1], "date": dec.date, "market_index": m_i,
+                                             "quote_signal": d["quote_signal"].values,
+                                             "market_index_dev": f["market_index_dev"].values}))
+        pd.concat(inputs_used).to_csv(Path(out_dir) / "december_scenario_inputs.csv", index=False)
         for k in [0.0, 0.5]:
             curves[f"A with trend frozen at Oct 31 (k = {k:g})" if k == 0 else f"A with half-speed trend (k = {k:g})"] = \
                 trend_adjusted(final, fA, k, t_end)
@@ -377,15 +403,20 @@ def main(out_dir="outputs/figures/checks", only=None):
         spread = max(v.max() for v in curves.values()) - min(v.min() for v in curves.values())
         results["december_scenarios"] = {k: [round(float(v.min()), 2), round(float(v.max()), 2), round(float(v.mean()), 2)]
                                          for k, v in curves.items()}
+        cA, cB = curves[list(curves)[0]], curves[list(curves)[1]]
+        results["december_A_vs_B_mean_diff_pct"] = float((cB.mean() / cA.mean() - 1) * 100)
         reg.save(fig, "06_december_scenarios", "December chart: sensitivity to assumptions",
                  "The fixed Lexington → Fort Wayne dry-van load priced for every December day under alternative "
-                 "inputs. A uses the market_index values actually supplied for those dates in validation.csv "
-                 "(features only, never labels). B and C use training data only. The last two vary the trend.",
-                 f"All scenarios lie within a ${spread:.0f} band (~{spread / curves[list(curves)[0]].mean() * 100:.0f}% "
-                 "of the price). The market index mainly shapes the 7-day wiggle (A vs B is nearly identical because "
-                 "the weekly pattern is so regular); the trend assumption shifts the level by a few percent.",
-                 "Submit A: the assessment supplies market_index for these dates, and using a provided input feature "
-                 "is not leakage. B shows the result barely changes if those values were not available.")
+                 "inputs. A (submitted) uses the market_index and quote_signal values supplied for those dates in "
+                 "validation.csv — input features only, never labels. B and C use training data only: October "
+                 "training rows for market_index and quote_signal, and no validation value enters any feature "
+                 "(inputs saved in december_scenario_inputs.csv). The last two curves vary the trend.",
+                 f"All scenarios lie within a ${spread:.0f} band (~{spread / cA.mean() * 100:.0f}% of the price). "
+                 f"The training-only forecast B differs from A by {(cB.mean() / cA.mean() - 1) * 100:+.1f}% on average "
+                 f"(largest daily gap ${np.abs(cB - cA).max():.0f}), because the weekly market pattern is very regular. "
+                 "The trend assumption shifts the level by about 1%.",
+                 "Submit A: the assessment supplies these feature values for the December dates. If only the seven "
+                 "chart columns may be used, B is the alternative and gives nearly the same curve.")
 
     (Path(out_dir) / "checks_summary.json").write_text(json.dumps(results, indent=2, default=float))
     print(json.dumps(results, indent=2, default=float))
